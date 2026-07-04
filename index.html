@@ -3,40 +3,58 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Crypto V4 Web Analyzer</title>
+  <title>Crypto V4 Web - AI 数据面板</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <div class="app">
-    <header>
-      <h1>Crypto V4 Web Analyzer</h1>
-      <p>多币种合约数据面板：BTC / ETH / HYPE / NEAR / ZEC / PUMP</p>
-    </header>
-
-    <section class="controls">
-      <button id="fetchBtn">获取最新数据</button>
-      <button id="copyBtn">复制 AI 分析 Prompt</button>
-      <button id="clearBtn" class="secondary">清空</button>
+  <main class="container">
+    <section class="hero">
+      <div>
+        <h1>Crypto V4 Web 数据面板</h1>
+        <p>BTC / ETH / HYPE / NEAR / ZEC / PUMP 多币种合约数据，一键生成 AI 分析 Prompt。</p>
+      </div>
+      <div class="actions">
+        <button id="fetchBtn">获取最新数据</button>
+        <button id="copyBtn" class="secondary">复制全部 AI Prompt</button>
+      </div>
     </section>
 
-    <section class="status" id="status">等待获取数据...</section>
-
-    <section>
-      <h2>市场基准</h2>
-      <div id="benchmarkCards" class="grid"></div>
+    <section class="settings">
+      <label>
+        周期
+        <select id="periodSelect">
+          <option value="5m">5分钟</option>
+          <option value="15m">15分钟</option>
+          <option value="30m">30分钟</option>
+          <option value="1h" selected>1小时</option>
+          <option value="4h">4小时</option>
+          <option value="1d">1天</option>
+        </select>
+      </label>
+      <label>
+        数据条数
+        <select id="limitSelect">
+          <option value="1" selected>最新1条</option>
+          <option value="6">最近6条</option>
+          <option value="24">最近24条</option>
+        </select>
+      </label>
+      <span id="status">等待获取数据</span>
     </section>
 
-    <section>
-      <h2>目标币种</h2>
-      <div id="targetCards" class="grid"></div>
+    <section class="coin-copy-panel">
+      <h2>单币种 AI 分析</h2>
+      <p>每个按钮会复制：本币种完整数据 + BTC 基准数据。</p>
+      <div id="coinCopyButtons" class="coin-buttons"></div>
     </section>
 
-    <section class="prompt-section">
+    <section id="cards" class="cards"></section>
+
+    <section class="prompt-box">
       <h2>AI 分析 Prompt</h2>
-      <textarea id="promptBox" placeholder="点击获取最新数据后，这里会生成可复制给 AI 的分析文本。"></textarea>
+      <textarea id="promptOutput" readonly placeholder="点击“获取最新数据”后，这里会生成可复制给 AI 的分析文本。"></textarea>
     </section>
-  </div>
-
+  </main>
   <script src="app.js"></script>
 </body>
 </html>

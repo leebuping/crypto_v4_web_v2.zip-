@@ -1,35 +1,24 @@
-# Crypto V4 Web Analyzer - V2
+# Crypto V4 Web - Coin Prompt Buttons
 
-这是一个本地网页版本的加密货币合约数据面板。
+本版本是网页交互版 V4。
 
-## 支持币种
+## 功能
 
-- BTCUSDT
-- ETHUSDT
-- HYPEUSDT
-- NEARUSDT
-- ZECUSDT
-- PUMPUSDT
-
-## 当前版本功能
-
-- 获取 Binance USD-M Futures 的 24h 行情
-- 获取当前价格、24h涨跌、高低点、成交量、成交额
-- 获取 OI（持仓量）
-- 获取资金费率
-- 自动生成可复制给 AI 的分析 Prompt
+- 获取 BTC / ETH / HYPE / NEAR / ZEC / PUMP 的 Binance USD-M 合约数据
+- 显示价格、24h涨跌、高低点、成交量、成交额、OI、资金费率、多空账户比、Top Trader、主动买卖量等字段
+- 复制全部币种 AI Prompt
+- 新增：每个币种一个“复制 AI 分析”按钮
+  - 每个按钮复制内容 = BTC 基准数据 + 当前币种全部数据
+  - 适合单独分析 ETH、HYPE、NEAR、ZEC、PUMP 等币种
 
 ## 使用方法
 
-1. 解压 ZIP
-2. 双击 index.html
+1. 解压 zip
+2. 双击 `index.html`
 3. 点击“获取最新数据”
-4. 点击“复制 AI 分析 Prompt”
-5. 粘贴到 AI 对话框分析
+4. 点击对应币种按钮，例如“复制 HYPEUSDT + BTC”
+5. 粘贴给 AI 分析
 
 ## 注意
 
-- 这是纯前端版本，不需要安装 Python。
-- 数据来自 Binance 公共接口。
-- 如果浏览器或网络限制跨域访问，可能需要后续升级为 Python/Node 后端版本。
-- 多空账户比、Top Trader 多空比、主动买卖量暂未接入。
+数据来自 Binance USD-M Futures 公开接口。部分币种如果接口不支持，会显示无数据或接口限制提示。

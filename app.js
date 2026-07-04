@@ -1,185 +1,299 @@
-const benchmarkSymbols = ["BTCUSDT", "ETHUSDT"];
-const targetSymbols = ["HYPEUSDT", "NEARUSDT", "ZECUSDT", "PUMPUSDT"];
-const allSymbols = [...benchmarkSymbols, ...targetSymbols];
+const SYMBOLS = [
+  { symbol: "BTCUSDT", group: "市场基准" },
+  { symbol: "ETHUSDT", group: "市场基准" },
+  { symbol: "HYPEUSDT", group: "目标币种" },
+  { symbol: "NEARUSDT", group: "目标币种" },
+  { symbol: "ZECUSDT", group: "目标币种" },
+  { symbol: "PUMPUSDT", group: "目标币种" },
+];
 
-const fetchBtn = document.getElementById("fetchBtn");
-const copyBtn = document.getElementById("copyBtn");
-const clearBtn = document.getElementById("clearBtn");
-const statusEl = document.getElementById("status");
-const benchmarkCards = document.getElementById("benchmarkCards");
-const targetCards = document.getElementById("targetCards");
-const promptBox = document.getElementById("promptBox");
+const BASE = "https://fapi.binance.com";
+const DATA_BASE = "https://fapi.binance.com/futures/data";
+let latestResults = [];
+let latestPeriod = "1h";
+let latestLimit = "1";
 
-let latestData = [];
+const els = {
+  fetchBtn: document.getElementById("fetchBtn"),
+  copyBtn: document.getElementById("copyBtn"),
+  cards: document.getElementById("cards"),
+  status: document.getElementById("status"),
+  promptOutput: document.getElementById("promptOutput"),
+  coinCopyButtons: document.getElementById("coinCopyButtons"),
+  periodSelect: document.getElementById("periodSelect"),
+  limitSelect: document.getElementById("limitSelect"),
+};
 
-function formatNumber(value, digits = 4) {
-  if (value === null || value === undefined || value === "") return "N/A";
-  const num = Number(value);
-  if (Number.isNaN(num)) return "N/A";
-  if (Math.abs(num) >= 1_000_000_000) return (num / 1_000_000_000).toFixed(2) + "B";
-  if (Math.abs(num) >= 1_000_000) return (num / 1_000_000).toFixed(2) + "M";
-  if (Math.abs(num) >= 1_000) return num.toLocaleString(undefined, { maximumFractionDigits: 2 });
-  return num.toFixed(digits).replace(/0+$/, "").replace(/\.$/, "");
+function fmt(value, digits = 4) {
+  if (value === null || value === undefined || value === "") return "暂未接入/无数据";
+  const n = Number(value);
+  if (Number.isNaN(n)) return String(value);
+  if (Math.abs(n) >= 1_000_000_000) return (n / 1_000_000_000).toFixed(2) + "B";
+  if (Math.abs(n) >= 1_000_000) return (n / 1_000_000).toFixed(2) + "M";
+  if (Math.abs(n) >= 1_000) return n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  return n.toLocaleString(undefined, { maximumFractionDigits: digits });
 }
 
-function formatPercent(value, digits = 2) {
-  const num = Number(value);
-  if (Number.isNaN(num)) return "N/A";
-  const sign = num > 0 ? "+" : "";
-  return sign + num.toFixed(digits) + "%";
+function pct(value, digits = 4) {
+  if (value === null || value === undefined || value === "") return "暂未接入/无数据";
+  const n = Number(value);
+  if (Number.isNaN(n)) return String(value);
+  return (n * 100).toFixed(digits) + "%";
 }
 
-function pctClass(value) {
-  const num = Number(value);
-  if (num > 0) return "positive";
-  if (num < 0) return "negative";
-  return "";
+function signedPct(value, digits = 2) {
+  if (value === null || value === undefined || value === "") return "暂未接入/无数据";
+  const n = Number(value);
+  if (Number.isNaN(n)) return String(value);
+  const sign = n > 0 ? "+" : "";
+  return `${sign}${n.toFixed(digits)}%`;
 }
 
-async function fetchTicker(symbol) {
-  const url = `https://fapi.binance.com/fapi/v1/ticker/24hr?symbol=${symbol}`;
+async function getJson(url) {
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`${symbol} 24h行情获取失败`);
-  return await res.json();
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  return res.json();
 }
 
-async function fetchFunding(symbol) {
-  const url = `https://fapi.binance.com/fapi/v1/premiumIndex?symbol=${symbol}`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`${symbol} 资金费率获取失败`);
-  return await res.json();
-}
-
-async function fetchOpenInterest(symbol) {
-  const url = `https://fapi.binance.com/fapi/v1/openInterest?symbol=${symbol}`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`${symbol} OI获取失败`);
-  return await res.json();
-}
-
-async function fetchSymbolData(symbol) {
+async function safeFetch(label, fn) {
   try {
-    const [ticker, funding, oi] = await Promise.all([
-      fetchTicker(symbol),
-      fetchFunding(symbol),
-      fetchOpenInterest(symbol),
-    ]);
-
-    const price = Number(ticker.lastPrice);
-    const quoteVolume = Number(ticker.quoteVolume);
-    const openInterest = Number(oi.openInterest);
-    const oiValue = openInterest * price;
-    const fundingRate = Number(funding.lastFundingRate) * 100;
-
-    return {
-      symbol,
-      ok: true,
-      price,
-      changePercent: Number(ticker.priceChangePercent),
-      high: Number(ticker.highPrice),
-      low: Number(ticker.lowPrice),
-      volume: Number(ticker.volume),
-      quoteVolume,
-      openInterest,
-      oiValue,
-      fundingRate,
-      markPrice: Number(funding.markPrice),
-      indexPrice: Number(funding.indexPrice),
-      nextFundingTime: funding.nextFundingTime ? new Date(funding.nextFundingTime).toLocaleString() : "N/A",
-    };
+    return { ok: true, data: await fn() };
   } catch (err) {
-    return { symbol, ok: false, error: err.message };
+    return { ok: false, error: `${label}: ${err.message}` };
   }
 }
 
-function createCard(item) {
-  const div = document.createElement("div");
-  div.className = "card";
+function latest(arr) {
+  return Array.isArray(arr) && arr.length ? arr[arr.length - 1] : null;
+}
 
-  if (!item.ok) {
-    div.innerHTML = `<h3>${item.symbol}</h3><div class="row"><span class="label">状态</span><span class="value negative">失败</span></div><div class="row"><span class="label">原因</span><span class="value">${item.error}</span></div>`;
-    return div;
+async function fetchSymbol(symbol, period, limit) {
+  const q = `symbol=${symbol}`;
+  const dl = `symbol=${symbol}&period=${period}&limit=${limit}`;
+
+  const [ticker, premium, oi, globalLS, topAcc, topPos, taker] = await Promise.all([
+    safeFetch("24h行情", () => getJson(`${BASE}/fapi/v1/ticker/24hr?${q}`)),
+    safeFetch("标记/指数/资金费率", () => getJson(`${BASE}/fapi/v1/premiumIndex?${q}`)),
+    safeFetch("OI", () => getJson(`${BASE}/fapi/v1/openInterest?${q}`)),
+    safeFetch("多空账户比", () => getJson(`${DATA_BASE}/globalLongShortAccountRatio?${dl}`)),
+    safeFetch("Top账户多空比", () => getJson(`${DATA_BASE}/topLongShortAccountRatio?${dl}`)),
+    safeFetch("Top持仓多空比", () => getJson(`${DATA_BASE}/topLongShortPositionRatio?${dl}`)),
+    safeFetch("主动买卖量", () => getJson(`${DATA_BASE}/takerlongshortRatio?${dl}`)),
+  ]);
+
+  const t = ticker.ok ? ticker.data : null;
+  const p = premium.ok ? premium.data : null;
+  const o = oi.ok ? oi.data : null;
+  const g = globalLS.ok ? latest(globalLS.data) : null;
+  const ta = topAcc.ok ? latest(topAcc.data) : null;
+  const tp = topPos.ok ? latest(topPos.data) : null;
+  const tk = taker.ok ? latest(taker.data) : null;
+
+  return {
+    symbol,
+    ok: ticker.ok,
+    errors: [ticker, premium, oi, globalLS, topAcc, topPos, taker].filter(x => !x.ok).map(x => x.error),
+    price: t?.lastPrice,
+    changePct: t?.priceChangePercent,
+    high: t?.highPrice,
+    low: t?.lowPrice,
+    volume: t?.volume,
+    quoteVolume: t?.quoteVolume,
+    openInterest: o?.openInterest,
+    markPrice: p?.markPrice,
+    indexPrice: p?.indexPrice,
+    fundingRate: p?.lastFundingRate,
+    nextFundingTime: p?.nextFundingTime,
+    globalLongShortRatio: g?.longShortRatio,
+    globalLongAccount: g?.longAccount,
+    globalShortAccount: g?.shortAccount,
+    topAccountLongShortRatio: ta?.longShortRatio,
+    topAccountLongAccount: ta?.longAccount,
+    topAccountShortAccount: ta?.shortAccount,
+    topPositionLongShortRatio: tp?.longShortRatio,
+    topPositionLongAccount: tp?.longAccount,
+    topPositionShortAccount: tp?.shortAccount,
+    takerBuySellRatio: tk?.buySellRatio,
+    takerBuyVol: tk?.buyVol,
+    takerSellVol: tk?.sellVol,
+  };
+}
+
+function clsChange(value) {
+  const n = Number(value);
+  if (Number.isNaN(n)) return "";
+  return n >= 0 ? "up" : "down";
+}
+
+function row(label, value, cls = "") {
+  return `<div class="row"><span>${label}</span><span class="${cls}">${value}</span></div>`;
+}
+
+function renderCards(results) {
+  els.cards.innerHTML = results.map(d => `
+    <article class="card">
+      <h3>${d.symbol}<span class="badge">${SYMBOLS.find(s => s.symbol === d.symbol)?.group || ""}</span></h3>
+      ${row("价格", fmt(d.price))}
+      ${row("24h涨跌", signedPct(d.changePct), clsChange(d.changePct))}
+      ${row("24h高/低", `${fmt(d.high)} / ${fmt(d.low)}`)}
+      ${row("24h成交量", fmt(d.volume))}
+      ${row("24h成交额", fmt(d.quoteVolume))}
+      ${row("OI 持仓量", fmt(d.openInterest))}
+      ${row("资金费率", pct(d.fundingRate))}
+      ${row("标记/指数价格", `${fmt(d.markPrice)} / ${fmt(d.indexPrice)}`)}
+      ${row("多空账户比", fmt(d.globalLongShortRatio))}
+      ${row("多账户/空账户", `${pct(d.globalLongAccount, 2)} / ${pct(d.globalShortAccount, 2)}`)}
+      ${row("Top账户多空比", fmt(d.topAccountLongShortRatio))}
+      ${row("Top持仓多空比", fmt(d.topPositionLongShortRatio))}
+      ${row("主动买/卖量", `${fmt(d.takerBuyVol)} / ${fmt(d.takerSellVol)}`)}
+      ${row("主动买卖比", fmt(d.takerBuySellRatio))}
+      ${d.errors.length ? row("提示", d.errors.slice(0, 2).join("；"), "warn") : ""}
+    </article>
+  `).join("");
+}
+
+function block(d) {
+  return `【${d.symbol}】
+- 价格：${fmt(d.price)}
+- 24h涨跌：${signedPct(d.changePct)}
+- 24h高/低：${fmt(d.high)} / ${fmt(d.low)}
+- 24h成交量：${fmt(d.volume)}
+- 24h成交额：${fmt(d.quoteVolume)}
+- OI持仓量：${fmt(d.openInterest)}
+- 资金费率：${pct(d.fundingRate)}
+- 标记价格/指数价格：${fmt(d.markPrice)} / ${fmt(d.indexPrice)}
+- 多空账户比：${fmt(d.globalLongShortRatio)}（多账户：${pct(d.globalLongAccount, 2)}，空账户：${pct(d.globalShortAccount, 2)}）
+- Top Trader账户多空比：${fmt(d.topAccountLongShortRatio)}（多账户：${pct(d.topAccountLongAccount, 2)}，空账户：${pct(d.topAccountShortAccount, 2)}）
+- Top Trader持仓多空比：${fmt(d.topPositionLongShortRatio)}（多持仓：${pct(d.topPositionLongAccount, 2)}，空持仓：${pct(d.topPositionShortAccount, 2)}）
+- 主动买量/卖量：${fmt(d.takerBuyVol)} / ${fmt(d.takerSellVol)}
+- 主动买卖比：${fmt(d.takerBuySellRatio)}
+- 数据状态：${d.errors.length ? d.errors.join("；") : "正常"}`;
+}
+
+
+function buildSingleCoinPrompt(results, targetSymbol, period, limit) {
+  const now = new Date().toLocaleString("zh-CN", { hour12: false });
+  const btc = results.find(d => d.symbol === "BTCUSDT");
+  const target = results.find(d => d.symbol === targetSymbol);
+  if (!target) return "";
+
+  const btcSection = btc
+    ? block(btc)
+    : "【BTCUSDT】\n- 数据状态：未获取到 BTC 基准数据";
+
+  const compareNote = targetSymbol === "BTCUSDT"
+    ? "本次分析对象就是 BTC，请重点分析 BTC 自身趋势、合约结构和市场风险。"
+    : "请重点比较本币种与 BTC 的强弱关系：如果 BTC 弱而本币种强，判断是否为独立资金拉盘、轧空或诱多；如果 BTC 强而本币种弱，判断是否为资金流出或相对弱势。";
+
+  return `请作为专业加密货币衍生品交易分析师，基于以下“截止当前时间点”的 Binance USD-M 合约数据，分析 ${targetSymbol} 的主力行为、轧空/诱多概率、关键风险和未来24小时走势。
+
+分析要求：
+1. 不要只看价格，重点结合 OI、资金费率、多空账户比、Top Trader、多空持仓、主动买卖量和成交量结构。
+2. 必须先用 BTCUSDT 作为市场基准，再分析 ${targetSymbol} 是否强于/弱于 BTC。
+3. ${compareNote}
+4. 给出 ${targetSymbol} 未来24小时偏多/偏空/震荡概率，并明确关键风险位。
+5. 如果某个字段无数据，要说明可能是交易所接口或合约支持限制，不要编造。
+
+更新时间：${now}
+数据周期：${period}，返回条数：${limit}
+
+【BTC 市场基准】
+
+${btcSection}
+
+【本币种数据】
+
+${block(target)}
+`;
+}
+
+function renderCoinCopyButtons(results) {
+  if (!els.coinCopyButtons) return;
+  if (!results.length) {
+    els.coinCopyButtons.innerHTML = `<span class="muted">请先获取数据</span>`;
+    return;
   }
 
-  div.innerHTML = `
-    <h3>${item.symbol}</h3>
-    <div class="row"><span class="label">价格</span><span class="value">${formatNumber(item.price)}</span></div>
-    <div class="row"><span class="label">24h涨跌</span><span class="value ${pctClass(item.changePercent)}">${formatPercent(item.changePercent)}</span></div>
-    <div class="row"><span class="label">24h高点</span><span class="value">${formatNumber(item.high)}</span></div>
-    <div class="row"><span class="label">24h低点</span><span class="value">${formatNumber(item.low)}</span></div>
-    <div class="row"><span class="label">24h成交量</span><span class="value">${formatNumber(item.volume)}</span></div>
-    <div class="row"><span class="label">24h成交额</span><span class="value">${formatNumber(item.quoteVolume)}</span></div>
-    <div class="row"><span class="label">OI币本位</span><span class="value">${formatNumber(item.openInterest)}</span></div>
-    <div class="row"><span class="label">OI估算U本位</span><span class="value">${formatNumber(item.oiValue)}</span></div>
-    <div class="row"><span class="label">资金费率</span><span class="value ${pctClass(item.fundingRate)}">${formatPercent(item.fundingRate, 4)}</span></div>
-    <div class="row"><span class="label">标记价格</span><span class="value">${formatNumber(item.markPrice)}</span></div>
-  `;
-  return div;
+  els.coinCopyButtons.innerHTML = results.map(d => `
+    <button class="coin-copy-btn" data-symbol="${d.symbol}">复制 ${d.symbol} + BTC</button>
+  `).join("");
+
+  els.coinCopyButtons.querySelectorAll("button[data-symbol]").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const symbol = btn.dataset.symbol;
+      const text = buildSingleCoinPrompt(latestResults, symbol, latestPeriod, latestLimit);
+      if (!text.trim()) {
+        alert("请先获取数据");
+        return;
+      }
+      await navigator.clipboard.writeText(text);
+      els.promptOutput.value = text;
+      els.status.textContent = `${symbol} + BTC AI Prompt 已复制`;
+    });
+  });
 }
 
-function renderCards(data) {
-  benchmarkCards.innerHTML = "";
-  targetCards.innerHTML = "";
+function buildPrompt(results, period, limit) {
+  const now = new Date().toLocaleString("zh-CN", { hour12: false });
+  const benchmarks = results.filter(d => ["BTCUSDT", "ETHUSDT"].includes(d.symbol));
+  const targets = results.filter(d => !["BTCUSDT", "ETHUSDT"].includes(d.symbol));
+  return `请作为专业加密货币衍生品交易分析师，基于以下“截止当前时间点”的 Binance USD-M 合约数据，分析主力行为、轧空/诱多概率、关键风险和未来24小时走势。
 
-  data.filter(x => benchmarkSymbols.includes(x.symbol)).forEach(item => benchmarkCards.appendChild(createCard(item)));
-  data.filter(x => targetSymbols.includes(x.symbol)).forEach(item => targetCards.appendChild(createCard(item)));
+分析要求：
+1. 不要只看价格，重点结合 OI、资金费率、多空账户比、Top Trader、多空持仓、主动买卖量和成交量结构。
+2. 先判断 BTC/ETH 市场基准强弱，再分析目标币种是否存在独立行情。
+3. 给出每个币未来24小时偏多/偏空/震荡概率，并明确关键风险位。
+4. 如果某个字段无数据，要说明可能是交易所接口或合约支持限制，不要编造。
+
+更新时间：${now}
+数据周期：${period}，返回条数：${limit}
+
+【市场基准】
+
+${benchmarks.map(block).join("\n\n")}
+
+【目标币种】
+
+${targets.map(block).join("\n\n")}
+`;
 }
 
-function blockForSymbol(item) {
-  if (!item.ok) {
-    return `【${item.symbol}】\n- 数据状态：获取失败\n- 失败原因：${item.error}\n`;
+async function run() {
+  els.fetchBtn.disabled = true;
+  els.status.textContent = "正在获取数据...";
+  els.cards.innerHTML = "";
+  const period = els.periodSelect.value;
+  const limit = els.limitSelect.value;
+  try {
+    const results = [];
+    for (const item of SYMBOLS) {
+      els.status.textContent = `正在获取 ${item.symbol}...`;
+      results.push(await fetchSymbol(item.symbol, period, limit));
+    }
+    latestResults = results;
+    latestPeriod = period;
+    latestLimit = limit;
+    renderCards(results);
+    renderCoinCopyButtons(results);
+    els.promptOutput.value = buildPrompt(results, period, limit);
+    els.status.textContent = "数据获取完成";
+  } catch (err) {
+    els.status.textContent = `获取失败：${err.message}`;
+  } finally {
+    els.fetchBtn.disabled = false;
   }
-  return `【${item.symbol}】\n` +
-    `- 价格：${formatNumber(item.price)}\n` +
-    `- 24h涨跌：${formatPercent(item.changePercent)}\n` +
-    `- 24h高/低：${formatNumber(item.high)} / ${formatNumber(item.low)}\n` +
-    `- 24h成交量：${formatNumber(item.volume)}\n` +
-    `- 24h成交额：${formatNumber(item.quoteVolume)}\n` +
-    `- OI币本位：${formatNumber(item.openInterest)}\n` +
-    `- OI估算U本位：${formatNumber(item.oiValue)}\n` +
-    `- 资金费率：${formatPercent(item.fundingRate, 4)}\n` +
-    `- 标记价格：${formatNumber(item.markPrice)}\n` +
-    `- 指数价格：${formatNumber(item.indexPrice)}\n` +
-    `- 下一次资金费率结算：${item.nextFundingTime}\n` +
-    `- 多空账户比：暂未接入\n` +
-    `- Top Trader多空比：暂未接入\n` +
-    `- 主动买量/卖量：暂未接入\n`;
-}
-
-function buildPrompt(data) {
-  const now = new Date().toLocaleString();
-  const benchmark = data.filter(x => benchmarkSymbols.includes(x.symbol)).map(blockForSymbol).join("\n");
-  const targets = data.filter(x => targetSymbols.includes(x.symbol)).map(blockForSymbol).join("\n");
-
-  return `请作为专业加密货币衍生品交易分析师，基于以下“截止当前时间点的最近24小时”多币种合约数据，分析市场结构、主力行为、轧空/诱多概率、关键风险和未来24小时走势。\n\n重点要求：\n1. 不要只看价格，要重点结合 OI、资金费率、成交量结构、BTC/ETH基准环境。\n2. 对 BTC、ETH 作为市场基准进行判断。\n3. 对 HYPE、NEAR、ZEC、PUMP 分别判断强弱、风险、是否存在独立行情。\n4. 给出未来24小时概率路径：上涨、震荡、下跌、极端插针。\n5. 明确指出哪些数据暂缺，不能过度推断。\n\n更新时间：${now}\n数据源：Binance USD-M Futures 公共接口\n\n【市场基准】\n${benchmark}\n【目标币种】\n${targets}\n\n请输出：\n- 市场总体判断\n- BTC/ETH 对山寨币的影响\n- 每个目标币种的多空结构判断\n- 轧空概率\n- 诱多概率\n- 未来24小时走势概率\n- 关键风险位和观察指标\n- 最后给出保守、激进两种交易思路。`;
-}
-
-async function getData() {
-  statusEl.textContent = "正在获取 Binance 合约数据...";
-  fetchBtn.disabled = true;
-  latestData = await Promise.all(allSymbols.map(fetchSymbolData));
-  renderCards(latestData);
-  promptBox.value = buildPrompt(latestData);
-  const successCount = latestData.filter(x => x.ok).length;
-  statusEl.textContent = `完成：成功 ${successCount}/${allSymbols.length}，更新时间 ${new Date().toLocaleString()}`;
-  fetchBtn.disabled = false;
 }
 
 async function copyPrompt() {
-  if (!promptBox.value.trim()) {
-    statusEl.textContent = "还没有 Prompt，请先获取数据。";
+  if (!els.promptOutput.value.trim()) {
+    alert("请先获取数据");
     return;
   }
-  await navigator.clipboard.writeText(promptBox.value);
-  statusEl.textContent = "AI 分析 Prompt 已复制。";
+  await navigator.clipboard.writeText(els.promptOutput.value);
+  els.status.textContent = "AI Prompt 已复制";
 }
 
-fetchBtn.addEventListener("click", getData);
-copyBtn.addEventListener("click", copyPrompt);
-clearBtn.addEventListener("click", () => {
-  latestData = [];
-  benchmarkCards.innerHTML = "";
-  targetCards.innerHTML = "";
-  promptBox.value = "";
-  statusEl.textContent = "已清空。";
-});
+els.fetchBtn.addEventListener("click", run);
+els.copyBtn.addEventListener("click", copyPrompt);
+
+renderCoinCopyButtons([]);
