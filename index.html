@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Crypto V4 Web Analyzer</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>Crypto V4 Web Analyzer</h1>
+      <p>多币种合约数据面板：BTC / ETH / HYPE / NEAR / ZEC / PUMP</p>
+    </header>
+
+    <section class="controls">
+      <button id="fetchBtn">获取最新数据</button>
+      <button id="copyBtn">复制 AI 分析 Prompt</button>
+      <button id="clearBtn" class="secondary">清空</button>
+    </section>
+
+    <section class="status" id="status">等待获取数据...</section>
+
+    <section>
+      <h2>市场基准</h2>
+      <div id="benchmarkCards" class="grid"></div>
+    </section>
+
+    <section>
+      <h2>目标币种</h2>
+      <div id="targetCards" class="grid"></div>
+    </section>
+
+    <section class="prompt-section">
+      <h2>AI 分析 Prompt</h2>
+      <textarea id="promptBox" placeholder="点击获取最新数据后，这里会生成可复制给 AI 的分析文本。"></textarea>
+    </section>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
